@@ -1,12 +1,12 @@
 "use client";
 
-import { Message } from "ai";
+import type { UIMessage } from "ai";
 import { cn } from "@/lib/utils";
 import { User, Bot, Loader2 } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface MessageListProps {
-  messages: Message[];
+  messages: UIMessage[];
   isLoading?: boolean;
 }
 
@@ -28,7 +28,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
       <div className="space-y-6 max-w-4xl mx-auto w-full">
         {messages.map((message) => (
           <div
-            key={message.id || message.content}
+            key={message.id}
             className={cn(
               "flex gap-4",
               message.role === "user" ? "justify-end" : "justify-start"
@@ -53,9 +53,9 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                   : "bg-white text-neutral-900 border border-neutral-200 shadow-sm"
               )}>
                 <div className="text-sm">
-                  {message.parts ? (
+                  {message.parts.length > 0 ? (
                     <>
-                      {message.parts.map((part, partIndex) => {
+                      {message.parts.map((part: any, partIndex: number) => {
                         switch (part.type) {
                           case "text":
                             return message.role === "user" ? (
@@ -112,12 +112,6 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
                           </div>
                         )}
                     </>
-                  ) : message.content ? (
-                    message.role === "user" ? (
-                      <span className="whitespace-pre-wrap">{message.content}</span>
-                    ) : (
-                      <MarkdownRenderer content={message.content} className="prose-sm" />
-                    )
                   ) : isLoading &&
                     message.role === "assistant" &&
                     messages.indexOf(message) === messages.length - 1 ? (

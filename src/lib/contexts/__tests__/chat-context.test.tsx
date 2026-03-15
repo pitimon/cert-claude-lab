@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, act, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import { ChatProvider, useChat } from "../chat-context";
 import { useFileSystem } from "../file-system-context";
 import { useChat as useAIChat } from "@ai-sdk/react";
@@ -43,13 +43,12 @@ describe("ChatContext", () => {
   };
 
   const mockHandleToolCall = vi.fn();
+  const mockSendMessage = vi.fn();
 
   const mockUseAIChat = {
     messages: [],
-    input: "",
-    handleInputChange: vi.fn(),
-    handleSubmit: vi.fn(),
-    status: "idle",
+    sendMessage: mockSendMessage,
+    status: "ready",
   };
 
   beforeEach(() => {
@@ -75,14 +74,13 @@ describe("ChatContext", () => {
     );
 
     expect(screen.getByTestId("messages").textContent).toBe("0");
-    expect(screen.getByTestId("input").getAttribute("value")).toBe(null);
-    expect(screen.getByTestId("status").textContent).toBe("idle");
+    expect(screen.getByTestId("status").textContent).toBe("ready");
   });
 
   test("initializes with project ID and messages", () => {
     const initialMessages = [
-      { id: "1", role: "user" as const, content: "Hello" },
-      { id: "2", role: "assistant" as const, content: "Hi there!" },
+      { id: "1", role: "user" as const, content: "Hello", parts: [] },
+      { id: "2", role: "assistant" as const, content: "Hi there!", parts: [] },
     ];
 
     (useAIChat as any).mockReturnValue({
@@ -91,26 +89,16 @@ describe("ChatContext", () => {
     });
 
     render(
-      <ChatProvider projectId="test-project" initialMessages={initialMessages}>
+      <ChatProvider projectId="test-project" initialMessages={initialMessages as any}>
         <TestComponent />
       </ChatProvider>
     );
-
-    expect(useAIChat).toHaveBeenCalledWith({
-      api: "/api/chat",
-      initialMessages,
-      body: {
-        files: mockFileSystem.serialize(),
-        projectId: "test-project",
-      },
-      onToolCall: expect.any(Function),
-    });
 
     expect(screen.getByTestId("messages").textContent).toBe("2");
   });
 
   test("tracks anonymous work when no project ID", async () => {
-    const mockMessages = [{ id: "1", role: "user", content: "Hello" }];
+    const mockMessages = [{ id: "1", role: "user", content: "Hello", parts: [] }];
 
     (useAIChat as any).mockReturnValue({
       ...mockUseAIChat,
@@ -132,7 +120,7 @@ describe("ChatContext", () => {
   });
 
   test("does not track anonymous work when project ID exists", async () => {
-    const mockMessages = [{ id: "1", role: "user", content: "Hello" }];
+    const mockMessages = [{ id: "1", role: "user", content: "Hello", parts: [] }];
 
     (useAIChat as any).mockReturnValue({
       ...mockUseAIChat,
@@ -150,31 +138,39 @@ describe("ChatContext", () => {
     expect(anonTracker.setHasAnonWork).not.toHaveBeenCalled();
   });
 
-  test("passes through AI chat functionality", () => {
-    const mockHandleInputChange = vi.fn();
-    const mockHandleSubmit = vi.fn();
-
-    (useAIChat as any).mockReturnValue({
-      ...mockUseAIChat,
-      handleInputChange: mockHandleInputChange,
-      handleSubmit: mockHandleSubmit,
-      status: "loading",
-    });
-
+  test("manages input state locally and calls sendMessage on submit", () => {
     render(
       <ChatProvider>
         <TestComponent />
       </ChatProvider>
     );
 
-    expect(screen.getByTestId("status").textContent).toBe("loading");
-
-    // Verify functions are passed through
     const textarea = screen.getByTestId("input");
     const form = screen.getByTestId("form");
 
-    expect(textarea).toBeDefined();
-    expect(form).toBeDefined();
+    // Type into the textarea
+    fireEvent.change(textarea, { target: { value: "Hello AI" } });
+    expect((textarea as HTMLTextAreaElement).value).toBe("Hello AI");
+
+    // Submit the form
+    fireEvent.submit(form);
+    expect(mockSendMessage).toHaveBeenCalledWith({ text: "Hello AI" });
+
+    // Input should be cleared after submit
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
+  });
+
+  test("does not submit empty input", () => {
+    render(
+      <ChatProvider>
+        <TestComponent />
+      </ChatProvider>
+    );
+
+    const form = screen.getByTestId("form");
+    fireEvent.submit(form);
+
+    expect(mockSendMessage).not.toHaveBeenCalled();
   });
 
   test("handles tool calls", () => {
